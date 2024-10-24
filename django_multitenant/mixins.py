@@ -126,22 +126,14 @@ class TenantModelMixin:
     def __setattr__(self, attrname, val):
         # Provides failing of the save operation if the tenant_id is changed.
         # try_update_tenant is being checked inside save method and if it is true, it will raise an exception.
-        super().__setattr__(attrname, val)
+        is_tenant_field = attrname == self.tenant_field or attrname == get_tenant_field(self).name
+        if not is_tenant_field or not val or self._state.adding or not (tenant_value := self.tenant_value):
+            return super().__setattr__(attrname, val)
 
-        def is_val_equal_to_tenant(value):
-            return (
-                value
-                and self.tenant_value
-                and value != self.tenant_value
-                and value != self.tenant_object
-            )
-
-        if (
-            (attrname == self.tenant_field or attrname == get_tenant_field(self).name)
-            and not self._state.adding
-            and is_val_equal_to_tenant(val)
-        ):
+        if val != tenant_value and val != self.tenant_object:
             self._try_update_tenant = True
+
+        return super().__setattr__(attrname, val)
 
     # pylint: disable=too-many-arguments
     def _do_update(self, base_qs, using, pk_val, values, update_fields, forced_update):
