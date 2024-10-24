@@ -39,9 +39,9 @@ def wrap_many_related_manager_add(many_related_manager_add):
     def add(self, *objs, through_defaults=None):
         if hasattr(self.through, "tenant_field") and get_current_tenant():
             through_defaults = through_defaults or {}
-            through_defaults[
-                get_tenant_column(self.through)
-            ] = get_current_tenant_value()
+            through_defaults[get_tenant_column(self.through)] = (
+                get_current_tenant_value()
+            )
         return many_related_manager_add(self, *objs, through_defaults=through_defaults)
 
     return add
@@ -126,11 +126,14 @@ class TenantModelMixin:
     def __setattr__(self, attrname, val):
         # Provides failing of the save operation if the tenant_id is changed.
         # try_update_tenant is being checked inside save method and if it is true, it will raise an exception.
-        is_tenant_field = attrname == self.tenant_field or attrname == get_tenant_field(self).name
-        if not is_tenant_field or not val or self._state.adding or not (tenant_value := self.tenant_value):
+        is_tenant_field = (
+            attrname == self.tenant_field or attrname == get_tenant_field(self).name
+        )
+        if not is_tenant_field or not val or self._state.adding:
             return super().__setattr__(attrname, val)
 
-        if val != tenant_value and val != self.tenant_object:
+        tenant_value = self.tenant_value
+        if tenant_value and val != tenant_value and val != self.tenant_object:
             self._try_update_tenant = True
 
         return super().__setattr__(attrname, val)
