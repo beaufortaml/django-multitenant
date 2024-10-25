@@ -126,10 +126,13 @@ class TenantModelMixin:
     def __setattr__(self, attrname, val):
         # Provides failing of the save operation if the tenant_id is changed.
         # try_update_tenant is being checked inside save method and if it is true, it will raise an exception.
-        is_tenant_field = (
-            attrname == self.tenant_field or attrname == get_tenant_field(self).name
-        )
-        if not is_tenant_field or not val or self._state.adding:
+        tenant_field = self.tenant_field or get_tenant_field(self).name
+        if (
+            attrname != tenant_field
+            or not val
+            or self._state.adding
+            or tenant_field not in self._state.fields_cache
+        ):
             return super().__setattr__(attrname, val)
 
         tenant_value = self.tenant_value
