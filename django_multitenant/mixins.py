@@ -1,3 +1,4 @@
+from functools import cached_property
 import logging
 
 from django.db.models.sql import DeleteQuery, UpdateQuery
@@ -38,9 +39,9 @@ def wrap_many_related_manager_add(many_related_manager_add):
     def add(self, *objs, through_defaults=None):
         if hasattr(self.through, "tenant_field") and get_current_tenant():
             through_defaults = through_defaults or {}
-            through_defaults[
-                get_tenant_column(self.through)
-            ] = get_current_tenant_value()
+            through_defaults[get_tenant_column(self.through)] = (
+                get_current_tenant_value()
+            )
         return many_related_manager_add(self, *objs, through_defaults=through_defaults)
 
     return add
@@ -125,19 +126,14 @@ class TenantModelMixin:
     def __setattr__(self, attrname, val):
         # Provides failing of the save operation if the tenant_id is changed.
         # try_update_tenant is being checked inside save method and if it is true, it will raise an exception.
-        def is_val_equal_to_tenant(val):
-            return (
-                val
-                and self.tenant_value
-                and val != self.tenant_value
-                and val != self.tenant_object
-            )
+        is_tenant_field = (
+            attrname == self.tenant_field or attrname == get_tenant_field(self).name
+        )
+        if not is_tenant_field or not val or self._state.adding:
+            return super().__setattr__(attrname, val)
 
-        if (
-            attrname in (self.tenant_field, get_tenant_field(self).name)
-            and not self._state.adding
-            and is_val_equal_to_tenant(val)
-        ):
+        tenant_value = self.tenant_value
+        if tenant_value and val != tenant_value and val != self.tenant_object:
             self._try_update_tenant = True
 
         return super().__setattr__(attrname, val)
@@ -192,12 +188,14 @@ class TenantModelMixin:
 
         return obj
 
-    @property
+    @cached_property
     def tenant_field(self):
-        if hasattr(self, "TenantMeta") and "tenant_field_name" in dir(self.TenantMeta):
-            return self.TenantMeta.tenant_field_name
-        if hasattr(self, "TenantMeta") and "tenant_id" in dir(self.TenantMeta):
-            return self.TenantMeta.tenant_id
+        if hasattr(self, "TenantMeta"):
+            dir_ = dir(self.TenantMeta)
+            if "tenant_field_name" in dir_:
+                return self.TenantMeta.tenant_field_name
+            if "tenant_id" in dir_:
+                return self.TenantMeta.tenant_id
         if hasattr(self, "tenant"):
             raise AttributeError(
                 f"Tenant field exists which may cause collision with tenant_id field. Please rename the tenant field in {self.__class__.__name__} "
